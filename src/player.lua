@@ -1,29 +1,30 @@
+local SpriteAnimation = require 'src.spriteAnimation'
+
+function tablelength(T)
+    local count = 0
+    for _ in pairs(T) do count = count + 1 end
+    return count
+end
+
 player = Class{
-    init = function(self)
-        self.x = mapImage:getWidth() / 2
-        self.y = mapImage:getHeight() / 2
-        self.image = love.graphics.newImage("assets/images/yang.png")
-        self.g = anim8.newGrid(48, 57, self.image:getWidth(), self.image:getHeight())
-        self.frameSpeed = 0.15
-        self.frameSpeedIdle = 0.30
-        self.anims = {
-            down = anim8.newAnimation(self.g('1-4', 1), self.frameSpeed),
-            up = anim8.newAnimation(self.g('1-4', 2), self.frameSpeed),
-            left = anim8.newAnimation(self.g('1-4', 3), self.frameSpeed),
-            right = anim8.newAnimation(self.g('1-4', 4), self.frameSpeed),
-            down_idle = anim8.newAnimation(self.g('1-4', 1), self.frameSpeedIdle),
-            up_idle = anim8.newAnimation(self.g('1-4', 2), self.frameSpeedIdle),
-            left_idle = anim8.newAnimation(self.g('1-4', 3), self.frameSpeedIdle),
-            right_idle = anim8.newAnimation(self.g('1-4', 4), self.frameSpeedIdle),
-        }
-        self:chanim('down_idle')
-    end,
-    xSpeed = 7,
-    ySpeed = 7
+    __includes = SpriteAnimation,
+    xSpeed = 5,
+    ySpeed = 5
 }
 
-function player:chanim(row)
-    self.anim = self.anims[row]
+function player:init(obj)
+    SpriteAnimation.init(self, obj, Animations.character)
+end
+
+function player:updateCollisions()
+    local collisions = HC.collisions(self.boundary)
+    if tablelength(collisions) > 0 then
+        for shape, delta in pairs(collisions) do
+            self.collision = delta
+        end
+    else
+        self.collision = {}
+    end
 end
 
 function player:update(dt)
@@ -48,28 +49,80 @@ function player:update(dt)
         self:chanim('right_idle')
     end
 
-    self.anim:update(dt)
+    SpriteAnimation.update(self, dt)
+    self:updateCollisions()
+end
+
+function player:colliding(dx, dy)
+    local colx, coly = false, false
+    if self.collision.x == nil then
+        return colx, coly
+    end
+
+    if dx < 0.0 and self.collision.x > 0.0 then
+        colx = true
+    elseif dx > 0.0 and self.collision.x < 0.0 then
+        colx = true
+    end
+    if dy > 0.0 and self.collision.y < 0.0 then
+        coly = true
+    elseif dy < 0.0 and self.collision.y > 0.0 then
+        coly = true
+    end
+
+    return colx, coly
 end
 
 function player:move(dx, dy)
-    self.x = self.x + (dx or 0)
-    self.y = self.y + (dy or 0)
-    if dx < 0.0 and self.x - camera.x < love.graphics.getWidth() / 4 then
-        camera.x = camera.x + (dx or 0)
-    end
-    if dx > 0.0 and (camera.x + love.graphics.getWidth()) - self.x < love.graphics.getWidth() / 4 then
-        camera.x = camera.x + (dx or 0)
-    end
-    if dy < 0.0 and self.y - camera.y < love.graphics.getHeight() / 4 then
-        camera.y = camera.y + (dy or 0)
-    end
-    if dy > 0.0 and (camera.y + love.graphics.getHeight()) - self.y < (love.graphics.getHeight() / 4) then
-        camera.y = camera.y + (dy or 0)
-    end
-end
+    local xo, yo = self.x + (dx or 0), self.y + (dy or 0)
+    -- offset coordinates relative to the camera
+    local cx, cy = camera:cameraCoords(xo, yo)
+    -- camera offset following the player
+    local cxo, cyo = camera.x + (dx or 0), camera.y + (dy or 0)
+    -- check collisions
+    local colx, coly = self:colliding(dx, dy)
 
-function player:draw()
-    self.anim:draw(self.image, self.x, self.y)
+    -- lock the player within the camera
+    if xo - (camera.x - WIDTH/2) < 100 or (camera.x + WIDTH/2) - xo < 100 or colx then
+        xo = self.x
+    end
+    if yo - (camera.y - HEIGHT/2) < 100 or (camera.y + HEIGHT/2) - yo < 100 or coly then
+        yo = self.y
+    end
+
+    -- commit to the offset, player is within bounds
+    SpriteAnimation.move(self, xo - self.x, yo - self.y)
+
+    -- keep camera within map
+
+    -- going left and on the border
+    if (cxo < camera.x and cxo < 5) or colx then
+        cxo = camera.x
+    -- going right and on the border
+    elseif (cxo > camera.x and cxo > map.w - WIDTH - 5) or colx then
+        cxo = camera.x
+    end
+    -- going up and on the border 
+    if (cyo < camera.y and cyo < 5) or coly then
+        cyo = camera.y
+    -- going down and on the border
+    elseif (cyo > camera.y and cyo > map.h - HEIGHT) or coly then
+        cyo = camera.y
+    end
+
+    -- allow the player to pull the camera along
+    if dx < 0.0 and cx < WIDTH / 4 then
+        camera.x = cxo
+    end
+    if dx > 0.0 and cx > WIDTH * 0.75 then
+        camera.x = cxo
+    end
+    if dy < 0.0 and cy < HEIGHT / 4 then 
+        camera.y = cyo
+    end
+    if dy > 0.0 and cy > HEIGHT * 0.75 then
+        camera.y = cyo
+    end
 end
 
 return player

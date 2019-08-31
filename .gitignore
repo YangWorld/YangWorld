@@ -2,3 +2,5 @@ love.js
 libs
 build-web
 build
+.python-version
+**/.DS_Store
